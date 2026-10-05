@@ -66,6 +66,26 @@ extension VCDataBuilder {
         _ = isCHSLanguage ? { unigramsCHS = unigrams }() : { unigramsCHT = unigrams }()
         norms.append(temporaryNorm)
       }
+      // 依詞語表推導單字頻次（`VC_CHARFREQ_MODE`）。不影響 norm，詳見 CharFrequencyFromPhrases.md。
+      let charFrequencyMode = CharFrequencyMode.current
+      if charFrequencyMode != .off {
+        NSLog(" - 通用: 單字頻次推導模式：\(charFrequencyMode.rawValue)。")
+        for isCHSLanguage in languages {
+          if isCHSLanguage {
+            CharFrequencyDeriver.apply(
+              mode: charFrequencyMode,
+              kanjiTable: &unigramsKanjiCHS,
+              phraseTable: unigramsCHS
+            )
+          } else {
+            CharFrequencyDeriver.apply(
+              mode: charFrequencyMode,
+              kanjiTable: &unigramsKanjiCHT,
+              phraseTable: unigramsCHT
+            )
+          }
+        }
+      }
       // CNS 與 GBEX 的內容放在最後處理。兩者分表收錄（GBEX 為 GB18030-2022 擴充字，
       // 自 2026-09-05 起與 CNS11643 全字庫分開編號），暫且共用同一 cns 旗標開關。
       if cns {

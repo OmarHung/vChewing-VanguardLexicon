@@ -23,6 +23,23 @@ extension VCDataBuilder {
       self.count = count
       self.type = category
       self.timestamp = VCDataBuilder.Unigram.nextStableSerial()
+      self.scoreBias = 0
+    }
+
+    /// Internal copy initializer that keeps the stable serial (timestamp) of the source,
+    /// so derived copies retain the original tie-breaking order during serialization.
+    private init(
+      copying source: Unigram,
+      count: Int,
+      scoreBias: Double
+    ) {
+      self.key = source.key
+      self.value = source.value
+      self.score = source.score
+      self.count = count
+      self.type = source.type
+      self.timestamp = source.timestamp
+      self.scoreBias = scoreBias
     }
 
     public required init(from decoder: any Decoder) throws {
@@ -34,6 +51,7 @@ extension VCDataBuilder {
       self.type = try container.decode(Category.self, forKey: .category)
       self.timestamp = try container.decodeIfPresent(Double.self, forKey: .timestamp)
         ?? VCDataBuilder.Unigram.nextStableSerial()
+      self.scoreBias = try container.decodeIfPresent(Double.self, forKey: .scoreBias) ?? 0
     }
 
     // MARK: Public
@@ -64,6 +82,9 @@ extension VCDataBuilder {
     public let count: Int
     public let type: Category
     public let timestamp: Double
+    /// Additive log10 offset applied by `weighten(norm:)` before rounding.
+    /// Always 0 unless a derived-frequency mode (see `CharFrequencyMode`) assigns one.
+    public let scoreBias: Double
 
     public var keyValueHash: Int {
       "\(key)\t\(value)".hashValue
@@ -119,6 +140,9 @@ extension VCDataBuilder {
       try container.encode(count, forKey: .count)
       try container.encode(type, forKey: .category)
       try container.encode(timestamp, forKey: .timestamp)
+      if scoreBias != 0 {
+        try container.encode(scoreBias, forKey: .scoreBias)
+      }
     }
 
     public func weighten(norm: Double) {
@@ -137,11 +161,20 @@ extension VCDataBuilder {
           Self.naturalE ** (Double(value.count) / 3.0 - 1.0) * Double(count) / norm
         )
       }
+      if count >= 0 {
+        weight += scoreBias
+      }
       let weightRounded: Double = weight.rounded(toPlaces: 3) // 為了節省生成的檔案體積，僅保留小數點後三位。
       score = weightRounded
     }
 
     // MARK: Internal
+
+    /// Returns a copy with a different raw count and score bias (key, value, category and
+    /// stable serial are kept). The returned unigram still needs `weighten(norm:)`.
+    func replacing(count newCount: Int, scoreBias newScoreBias: Double = 0) -> Unigram {
+      Unigram(copying: self, count: newCount, scoreBias: newScoreBias)
+    }
 
     static func sortForSerialization(_ lhs: VCDataBuilder.Unigram, _ rhs: VCDataBuilder.Unigram)
       -> Bool {
@@ -174,6 +207,7 @@ extension VCDataBuilder {
       case count = "c"
       case category = "t"
       case timestamp = "d"
+      case scoreBias = "b"
     }
 
     private static let stableSerialLock = NSLock()
